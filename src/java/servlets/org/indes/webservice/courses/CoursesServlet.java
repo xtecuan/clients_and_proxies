@@ -6,15 +6,20 @@
 package servlets.org.indes.webservice.courses;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -26,13 +31,81 @@ import javax.servlet.http.HttpServletResponse;
  */
 public class CoursesServlet extends HttpServlet {
 
-    public static final String KNLSYSTEM_HOST = "hqdaknl01";
-    public static final int KNLSYSTEM_PORT = 9083;
-    public static final String KNLSYSTEM_COURSES_WS_URL = "http://" + KNLSYSTEM_HOST + ":" + KNLSYSTEM_PORT + "/webservice/Courses.cfc?wsdl";
-    public static final String KNLSYSTEM_CFC_URL = "http://" + KNLSYSTEM_HOST + ":" + KNLSYSTEM_PORT + "/webservice/Courses.cfc";
+    private static final String CONFIG = "CoursesServlet.properties";
+    private String knlsystemHost;
+    private int knlsystemPort;
     public static final String UTF_8_CHARSET = "UTF-8";
     public static final String XML_CONTENT_TYPE = "text/xml;charset=" + UTF_8_CHARSET;
     public static final String TEXT_CONTENT_TYPE = "text/html;charset=" + UTF_8_CHARSET;
+    public static final String USER_AGENT_KEY = "User-Agent";
+    public static final String USER_AGENT_MOZILLA = "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.0)";
+    public static final String SOAP_ACTION_KEY = "SOAPAction";
+    public static final String SOAP_ACTION_COURSES = "getOutputs";
+    public static final String POST = "POST";
+    public static final String GET = "GET";
+
+    private Properties config;
+
+    public static Properties readConfig(String path) {
+        File folder = new File(path);
+        File fileCfg = new File(folder, CONFIG);
+        Properties config = new Properties();
+
+        try {
+
+            config.load(new FileReader(fileCfg));
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+        }
+
+        return config;
+    }
+
+    public Properties getProxyConfig() {
+        Properties p = System.getProperties();
+        p.put("http.proxyHost", config.getProperty("http.proxyHost"));
+        p.put("http.proxyPort", config.getProperty("http.proxyPort"));
+        p.put("http.proxyUser", config.getProperty("http.proxyUser"));
+        p.put("http.proxyPassword", config.getProperty("http.proxyPassword"));
+        p.put("http.proxySet", config.getProperty("http.proxySet"));
+        System.out.println(p.toString());
+        return p;
+    }
+
+    public Proxy getProxy() {
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(config.getProperty("http.proxyHost"), Integer.parseInt(config.getProperty("http.proxyPort"))));
+//        Authenticator authenticator = new Authenticator() {
+//
+//            @Override
+//            public PasswordAuthentication getPasswordAuthentication() {
+//                return (new PasswordAuthentication(config.getProperty("http.proxyUser"),
+//                        config.getProperty("http.proxyPassword").toCharArray()));
+//            }
+//        };
+//        Authenticator.setDefault(authenticator);
+        return proxy;
+    }
+
+    @Override
+    public void init() throws ServletException {
+        String path = getServletConfig().getServletContext().getRealPath("/WEB-INF/classes");
+        System.out.println("Path: " + path);
+        config = readConfig(path);
+        if (config != null) {
+
+            knlsystemHost = config.getProperty("KNLSYSTEM_HOST");
+            knlsystemPort = Integer.parseInt(config.getProperty("KNLSYSTEM_PORT"));
+
+        }
+    }
+
+    public String getKNLSYSTEM_COURSES_WS_URL() {
+        return "http://" + knlsystemHost + ":" + knlsystemPort + "/webservice/Courses.cfc?wsdl";
+    }
+
+    public String getKNLSYSTEM_CFC_URL() {
+        return "http://" + knlsystemHost + ":" + knlsystemPort + "/webservice/Courses.cfc";
+    }
 
     /**
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code>
@@ -111,14 +184,17 @@ public class CoursesServlet extends HttpServlet {
 
             if (haveWSDL && contentLength <= 0 && methodValidation == false) {
 
-                URL url = new URL(KNLSYSTEM_COURSES_WS_URL);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(url.openStream(), UTF_8_CHARSET));
-                String line;
-
-                while ((line = reader.readLine()) != null) {
-                    out.println(line);
-                }
-                reader.close();
+//                URL url = new URL(getKNLSYSTEM_COURSES_WS_URL());
+//                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+//                connection.addRequestProperty(USER_AGENT_KEY, USER_AGENT_MOZILLA);
+//                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), UTF_8_CHARSET));
+//                String line;
+//
+//                while ((line = reader.readLine()) != null) {
+//                    out.println(line);
+//                }
+//                reader.close();
+                  executeCall(null, XML_CONTENT_TYPE, out, getCallURL(getKNLSYSTEM_COURSES_WS_URL(), params), GET);
 
             }
 
@@ -126,7 +202,7 @@ public class CoursesServlet extends HttpServlet {
                 String body = getBodyOfXMLMessage(request.getReader());
                 String contentType = request.getContentType();
                 System.out.println(contentType);
-                executeCall(body, contentType, out, getCallURL(KNLSYSTEM_COURSES_WS_URL, params), "POST");
+                executeCall(body, contentType, out, getCallURL(getKNLSYSTEM_COURSES_WS_URL(), params), POST);
             }
 
             if (contentLength <= 0 && methodValidation) {
@@ -154,7 +230,7 @@ public class CoursesServlet extends HttpServlet {
                 if (dateGreaterThanEventEndDateValidation) {
                     params.put("dateGreaterThanEventEndDate", dateGreaterThanEventEndDate);
                 }
-                executeCall(null, TEXT_CONTENT_TYPE, out, getCallURL(KNLSYSTEM_CFC_URL, params), "GET");
+                executeCall(null, TEXT_CONTENT_TYPE, out, getCallURL(getKNLSYSTEM_CFC_URL(), params), GET);
 
             }
 
@@ -196,10 +272,11 @@ public class CoursesServlet extends HttpServlet {
             URL url = new URL(knlsystemUrl);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod(httpMethod);
+            connection.addRequestProperty(USER_AGENT_KEY, USER_AGENT_MOZILLA);
 
             if (body != null && body.length() > 0) {
                 connection.setDoOutput(true);
-                connection.setRequestProperty("SOAPAction", "getOutputs");
+                connection.setRequestProperty(SOAP_ACTION_KEY, SOAP_ACTION_COURSES);
                 connection.setRequestProperty("Content-Type", contentType);
                 OutputStreamWriter writer = new OutputStreamWriter(connection.getOutputStream());
                 writer.write(body);
@@ -258,7 +335,7 @@ public class CoursesServlet extends HttpServlet {
      */
     @Override
     public String getServletInfo() {
-        return "CoursesServlet proxy for KNLSystem instance: " + KNLSYSTEM_COURSES_WS_URL;
+        return "CoursesServlet proxy for KNLSystem instance: " + getKNLSYSTEM_COURSES_WS_URL();
     }// </editor-fold>
 
 }
